@@ -230,12 +230,45 @@ int ipc2ril_ussd_state(struct ipc_ss_ussd_header *ussd, char *message[2])
 	return 0;
 }
 
+int ipc2ril_ussd_encoding(int data_encoding)
+{
+	switch (data_encoding >> 4) {
+	case 0x00:
+	case 0x02:
+	case 0x03:
+		return USSD_ENCODING_GSM7;
+	case 0x01:
+		if (data_encoding == 0x10)
+			return USSD_ENCODING_GSM7;
+		if (data_encoding == 0x11)
+			return USSD_ENCODING_UCS2;
+		break;
+	case 0x04:
+	case 0x05:
+	case 0x06:
+	case 0x07:
+		if (data_encoding & 0x20)
+			return USSD_ENCODING_UNKNOWN;
+		if (((data_encoding >> 2) & 3) == 0)
+			return USSD_ENCODING_GSM7;
+		if (((data_encoding >> 2) & 3) == 2)
+			return USSD_ENCODING_UCS2;
+		break;
+	case 0xF:
+		if (!(data_encoding & 4))
+			return USSD_ENCODING_GSM7;
+		break;
+	}
+
+	return USSD_ENCODING_UNKNOWN;
+}
+
 int ipc_ss_ussd(struct ipc_message *message)
 {
 	char *data_dec = NULL;
 	int data_dec_len = 0;
-	sms_coding_scheme coding_scheme;
 	char *ussd_message[2];
+	int ussd_encoding;
 	struct ipc_ss_ussd_header *ussd = NULL;
 	unsigned char state;
 	int rc;
@@ -254,9 +287,9 @@ int ipc_ss_ussd(struct ipc_message *message)
 	ril_request_data_set_uniq(RIL_REQUEST_SEND_USSD, (void *) &ussd->state, sizeof(unsigned char));
 
 	if (ussd->length > 0 && message->size > 0 && message->data != NULL) {
-		coding_scheme = sms_get_coding_scheme(ussd->dcs);
-		switch (coding_scheme) {
-			case SMS_CODING_SCHEME_GSM7:
+		ussd_encoding = ipc2ril_ussd_encoding(ussd->dcs);
+		switch (ussd_encoding) {
+			case USSD_ENCODING_GSM7:
 				RIL_LOGD("USSD Rx encoding is GSM7");
 
 				data_dec_len = gsm72ascii((unsigned char *) message->data
@@ -265,7 +298,7 @@ int ipc_ss_ussd(struct ipc_message *message)
 				ussd_message[1][data_dec_len] = '\0';
 
 				break;
-			case SMS_CODING_SCHEME_UCS2:
+			case USSD_ENCODING_UCS2:
 				RIL_LOGD("USSD Rx encoding %x is UCS2", ussd->dcs);
 
 				data_dec_len = message->size - sizeof(struct ipc_ss_ussd_header);

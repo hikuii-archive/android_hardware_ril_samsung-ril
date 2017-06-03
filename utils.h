@@ -42,12 +42,4 @@ int eventfd_flush(int fd);
 int eventfd_recv(int fd, eventfd_t *event);
 int eventfd_send(int fd, eventfd_t event);
 
-typedef enum {
-	SMS_CODING_SCHEME_UNKNOWN = 0,
-	SMS_CODING_SCHEME_GSM7,
-	SMS_CODING_SCHEME_UCS2
-} sms_coding_scheme;
-
-sms_coding_scheme sms_get_coding_scheme(int data_encoding);
-
 #endif

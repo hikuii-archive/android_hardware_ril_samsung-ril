@@ -184,38 +184,6 @@ int utf8_write(char *utf8, int offset, int v)
 	return result;
 }
 
-sms_coding_scheme sms_get_coding_scheme(int data_encoding)
-{
-	switch (data_encoding >> 4) {
-	case 0x00:
-	case 0x02:
-	case 0x03:
-		return SMS_CODING_SCHEME_GSM7;
-	case 0x01:
-		if (data_encoding == 0x10)
-			return SMS_CODING_SCHEME_GSM7;
-		if (data_encoding == 0x11)
-			return SMS_CODING_SCHEME_UCS2;
-		break;
-	case 0x04:
-	case 0x05:
-	case 0x06:
-	case 0x07:
-		if (data_encoding & 0x20)
-			return SMS_CODING_SCHEME_UNKNOWN;
-		if (((data_encoding >> 2) & 3) == 0)
-			return SMS_CODING_SCHEME_GSM7;
-		if (((data_encoding >> 2) & 3) == 2)
-			return SMS_CODING_SCHEME_UCS2;
-		break;
-	case 0xF:
-		if (!(data_encoding & 4))
-			return SMS_CODING_SCHEME_GSM7;
-		break;
-	}
-	return SMS_CODING_SCHEME_UNKNOWN;
-}
-
 int data_dump(const void *data, size_t size)
 {
 	unsigned int cols = 8;
