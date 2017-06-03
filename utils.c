@@ -111,7 +111,7 @@ int ascii2gsm7_ussd(char *data, unsigned char **data_enc, int length)
 	enc_length = ((length * 7) - (length * 7) % 8) / 8;
 	enc_length += (length * 7) % 8 > 0 ? 1 : 0;
 
-	//FIXME: why does samsung does that?
+	// FIXME: why does Samsung do this?
 	enc_length++;
 
 	enc = malloc(enc_length);
@@ -140,7 +140,7 @@ int ascii2gsm7_ussd(char *data, unsigned char **data_enc, int length)
 
 	*data_enc = enc;
 
-	//FIXME: what is going on here?
+	// FIXME: what is going on here?
 	enc[enc_length - 2] |= 0x30;
 	enc[enc_length - 1] = 0x02;
 

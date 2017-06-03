@@ -42,7 +42,10 @@ int ipc_ss_ussd_callback(struct ipc_message *message)
 		goto error;
 	}
 
-	ril_request_complete(ipc_fmt_request_token(message->aseq), RIL_E_SUCCESS, NULL, 0);
+	rc = ril_request_complete(ipc_fmt_request_token(message->aseq), RIL_E_SUCCESS, NULL, 0);
+	if (rc < 0)
+		goto error;
+
 	global_ussd_state = 0;
 	goto complete;
 
