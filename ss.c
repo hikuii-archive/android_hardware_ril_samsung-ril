@@ -24,8 +24,6 @@
 #include <samsung-ril.h>
 #include <utils.h>
 
-unsigned char global_ussd_state;
-
 int ipc_ss_ussd_callback(struct ipc_message *message)
 {
 	struct ipc_gen_phone_res_data *data;
@@ -42,14 +40,18 @@ int ipc_ss_ussd_callback(struct ipc_message *message)
 		goto error;
 	}
 
-	rc = ril_request_complete(ipc_fmt_request_token(message->aseq), RIL_E_SUCCESS, NULL, 0);
-	if (rc < 0)
+	RIL_LOGD("group %d, index %d, type %d, code 0x%04x, code inv 0x%04x", data->group, data->index, data->type, data->code, data->code & 0xff);
+
+	// catch error code if no IPC_SS_USSD notification is sent
+	if ((data->code & 0xff) != 0x00)
 		goto error;
 
-	global_ussd_state = 0;
+	ril_request_complete(ipc_fmt_request_token(message->aseq), RIL_E_SUCCESS, NULL, 0);
+
 	goto complete;
 
 error:
+	ril_request_data_free(RIL_REQUEST_SEND_USSD);
 	ril_request_complete(ipc_fmt_request_token(message->aseq), RIL_E_GENERIC_FAILURE, NULL, 0);
 
 complete:
@@ -63,6 +65,10 @@ int ril_request_send_ussd(void *data, size_t size, RIL_Token token)
 	char *message = NULL;
 	struct ipc_ss_ussd_header *ussd = NULL;
 	int message_size = 0xc0;
+	void *ussd_state_data;
+	size_t ussd_state_size;
+	unsigned char ussd_state = 0;
+	struct ril_request *request;
 	int rc;
 
 	if (data == NULL || size < sizeof(char *))
@@ -72,7 +78,21 @@ int ril_request_send_ussd(void *data, size_t size, RIL_Token token)
 	if (rc < 0)
 		return RIL_REQUEST_UNHANDLED;
 
-	switch (global_ussd_state) {
+	request = ril_request_find_request_status(RIL_REQUEST_SEND_USSD, RIL_REQUEST_HANDLED);
+	if (request != NULL) {
+		return RIL_REQUEST_UNHANDLED;
+	}
+
+	ussd_state_size = ril_request_data_size_get(RIL_REQUEST_SEND_USSD);
+	ussd_state_data = ril_request_data_get(RIL_REQUEST_SEND_USSD);
+
+	if (ussd_state_data != NULL && ussd_state_size > 0) {
+		ussd_state = *((unsigned char *) ussd_state_data);
+		free(ussd_state_data);
+		RIL_LOGE("USSD state is %d", ussd_state);
+	}
+
+	switch (ussd_state) {
 		case 0:
 		case IPC_SS_USSD_NO_ACTION_REQUIRE:
 		case IPC_SS_USSD_TERMINATED_BY_NET:
@@ -160,7 +180,6 @@ int ril_request_cancel_ussd(void *data, size_t size, RIL_Token token)
 	memset(&ussd, 0, sizeof(ussd));
 
 	ussd.state = IPC_SS_USSD_TERMINATED_BY_NET;
-	global_ussd_state = IPC_SS_USSD_TERMINATED_BY_NET;
 
 	rc = ipc_gen_phone_res_expect_complete(ipc_fmt_request_seq(token), IPC_SS_USSD);
 	if (rc < 0)
@@ -185,6 +204,8 @@ int ipc2ril_ussd_state(struct ipc_ss_ussd_header *ussd, char *message[2])
 {
 	if (ussd == NULL || message == NULL)
 		return -1;
+
+	RIL_LOGE("ipc2ril USSD state is %d", ussd->state);
 
 	switch (ussd->state) {
 		case IPC_SS_USSD_NO_ACTION_REQUIRE:
@@ -231,7 +252,7 @@ int ipc_ss_ussd(struct ipc_message *message)
 	if (rc < 0)
 		goto error;
 
-	global_ussd_state = ussd->state;
+	ril_request_data_set_uniq(RIL_REQUEST_SEND_USSD, (void *) &ussd->state, sizeof(unsigned char));
 
 	if (ussd->length > 0 && message->size > 0 && message->data != NULL) {
 		coding_scheme = sms_get_coding_scheme(ussd->dcs);
