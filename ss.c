@@ -43,11 +43,10 @@ int ipc_ss_ussd_callback(struct ipc_message *message)
 	RIL_LOGD("group %d, index %d, type %d, code 0x%04x, code inv 0x%04x", data->group, data->index, data->type, data->code, data->code & 0xff);
 
 	// catch error code if no IPC_SS_USSD notification is sent
-	if ((data->code & 0xff) != 0x00)
+	if ((data->code & 0xff) == 0x32 || (data->code & 0xff) == 0x24)
 		goto error;
 
 	ril_request_complete(ipc_fmt_request_token(message->aseq), RIL_E_SUCCESS, NULL, 0);
-
 	goto complete;
 
 error:
