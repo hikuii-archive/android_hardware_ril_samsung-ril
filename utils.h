@@ -33,7 +33,6 @@ struct list_head {
 struct list_head *list_head_alloc(struct list_head *prev, struct list_head *next,
 	const void *data);
 void list_head_free(struct list_head *list);
-int gsm72ascii(unsigned char *data, char **data_dec, int length);
 int ascii2gsm7_ussd(char *data, unsigned char **data_enc, int length);
 int utf8_write(char *utf8, int offset, int v);
 int data_dump(const void *data, size_t size);

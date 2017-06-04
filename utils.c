@@ -62,42 +62,6 @@ void list_head_free(struct list_head *list)
 }
 
 /*
- * Converts GSM7 (8 bits) data to ASCII (7 bits)
- */
-int gsm72ascii(unsigned char *data, char **data_dec, int length)
-{
-	int t, u, d, o = 0;
-	int i;
-
-	int dec_length;
-	char *dec;
-
-	dec_length = ((length * 8) - ((length * 8) % 7) ) / 7;
-	dec = malloc(dec_length);
-
-	memset(dec, 0, dec_length);
-
-	for (i = 0 ; i < length ; i++)
-	{
-		d = 7 - i % 7;
-		if (d == 7 && i != 0)
-			o++;
-
-		t = (data[i] - (((data[i] >> d) & 0xff) << d));
-		u = (data[i] >> d) & 0xff;
-
-		dec[i+o]+=t << (i + o) % 8;
-
-		if (u)
-			dec[i+1+o]+=u;
-	}
-
-	*data_dec = dec;
-
-	return dec_length;
-}
-
-/*
  * Converts ASCII (7 bits) data to GSM7 (8 bits)
  */
 int ascii2gsm7_ussd(char *data, unsigned char **data_enc, int length)

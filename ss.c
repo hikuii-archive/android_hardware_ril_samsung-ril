@@ -260,6 +260,73 @@ int ipc2ril_ussd_encoding(int data_encoding)
 	return USSD_ENCODING_UNKNOWN;
 }
 
+#define  GSM_7BITS_ESCAPE   0x1b
+
+/* For each gsm7 code value, this table gives the equivalent
+ * UTF-8 code point.
+ */
+unsigned short gsm7bits_to_unicode[128] = {
+  '@', 0xa3,  '$', 0xa5, 0xe8, 0xe9, 0xf9, 0xec, 0xf2, 0xc7, '\n', 0xd8, 0xf8, '\r', 0xc5, 0xe5,
+0x394,  '_',0x3a6,0x393,0x39b,0x3a9,0x3a0,0x3a8,0x3a3,0x398,0x39e,    0, 0xc6, 0xe6, 0xdf, 0xc9,
+  ' ',  '!',  '"',  '#', 0xa4,  '%',  '&', '\'',  '(',  ')',  '*',  '+',  ',',  '-',  '.',  '/',
+  '0',  '1',  '2',  '3',  '4',  '5',  '6',  '7',  '8',  '9',  ':',  ';',  '<',  '=',  '>',  '?',
+ 0xa1,  'A',  'B',  'C',  'D',  'E',  'F',  'G',  'H',  'I',  'J',  'K',  'L',  'M',  'N',  'O',
+  'P',  'Q',  'R',  'S',  'T',  'U',  'V',  'W',  'X',  'Y',  'Z', 0xc4, 0xd6,0x147, 0xdc, 0xa7,
+ 0xbf,  'a',  'b',  'c',  'd',  'e',  'f',  'g',  'h',  'i',  'j',  'k',  'l',  'm',  'n',  'o',
+  'p',  'q',  'r',  's',  't',  'u',  'v',  'w',  'x',  'y',  'z', 0xe4, 0xf6, 0xf1, 0xfc, 0xe0,
+};
+
+/* For each gsm7 extended code value, this table gives the equivalent
+ * UTF-8 code point.
+ */
+unsigned short gsm7bits_extend_to_unicode[128] = {
+    0,   0,   0,   0,   0,   0,   0,   0,   0,   0,'\f',   0,   0,   0,   0,   0,
+    0,   0,   0,   0, '^',   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+    0,   0,   0,   0,   0,   0,   0,   0, '{', '}',   0,   0,   0,   0,   0,'\\',
+    0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0, '[', '~', ']',   0,
+  '|',   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+    0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+    0,   0,   0,   0,   0,0x20ac, 0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+    0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+};
+
+int ipc2ril_utf8_from_gsm7(unsigned char *data, char **utf8, int length)
+{
+	int septet_offset = 0;
+	int shift = (septet_offset & 7);
+	int septet_count = 0, escaped = 0, result = 0;
+	unsigned char *src = data;
+
+	src += (septet_offset >> 3);
+	septet_count = (length * 8) / 7; // round down
+
+	for (; septet_count > 0; septet_count--) {
+		int c = (src[0] >> shift) & 0x7f;
+		int v;
+		if (shift > 1) {
+			c = ((src[1] << (8-shift)) | c) & 0x7f;
+		}
+		if (escaped) {
+			v = gsm7bits_extend_to_unicode[c];
+		} else if (c == GSM_7BITS_ESCAPE) {
+			escaped = 1;
+			goto NextSeptet;
+		} else {
+			v = gsm7bits_to_unicode[c];
+		}
+		result += utf8_write(*utf8, result, v);
+
+	NextSeptet:
+		shift += 7;
+		if (shift >= 8) {
+			shift -= 8;
+			src += 1;
+		}
+	}
+
+	return  result;
+}
+
 int ipc_ss_ussd(struct ipc_message *message)
 {
 	char *data_dec = NULL;
@@ -289,8 +356,14 @@ int ipc_ss_ussd(struct ipc_message *message)
 			case USSD_ENCODING_GSM7:
 				RIL_LOGD("USSD Rx encoding is GSM7");
 
-				data_dec_len = gsm72ascii((unsigned char *) message->data
-							  + sizeof(struct ipc_ss_ussd_header), &data_dec, message->size - sizeof(struct ipc_ss_ussd_header));
+				data_dec_len = ipc2ril_utf8_from_gsm7((unsigned char *) message->data + sizeof(struct ipc_ss_ussd_header),
+									&data_dec, message->size - sizeof(struct ipc_ss_ussd_header));
+
+				data_dec = malloc(data_dec_len+1);
+				memset(data_dec, 0, data_dec_len);
+
+				ipc2ril_utf8_from_gsm7((unsigned char *) message->data + sizeof(struct ipc_ss_ussd_header),
+							&data_dec, message->size - sizeof(struct ipc_ss_ussd_header));
 				asprintf(&ussd_message[1], "%s", data_dec);
 				ussd_message[1][data_dec_len] = '\0';
 				break;
