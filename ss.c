@@ -31,7 +31,7 @@ int ipc_ss_ussd_callback(struct ipc_message *message)
 
 	if (message == NULL || message->data == NULL || message->size < sizeof(struct ipc_gen_phone_res_data))
 		return -1;
-	
+
 	data = (struct ipc_gen_phone_res_data *) message->data;
 
 	rc = ipc_gen_phone_res_check(data);
@@ -40,9 +40,9 @@ int ipc_ss_ussd_callback(struct ipc_message *message)
 		goto error;
 	}
 
-	RIL_LOGD("group %d, index %d, type %d, code 0x%04x, code inv 0x%04x", data->group, data->index, data->type, data->code, data->code & 0xff);
+	RIL_LOGD("USSD callback code 0x%04x", data->code);
 
-	// catch error code if no IPC_SS_USSD notification is sent
+	// catch error codes if no IPC_SS_USSD notification is sent
 	if ((data->code & 0xff) == 0x32 || (data->code & 0xff) == 0x24)
 		goto error;
 
@@ -88,7 +88,6 @@ int ril_request_send_ussd(void *data, size_t size, RIL_Token token)
 	if (ussd_state_data != NULL && ussd_state_size > 0) {
 		ussd_state = *((unsigned char *) ussd_state_data);
 		free(ussd_state_data);
-		RIL_LOGE("USSD state is %d", ussd_state);
 	}
 
 	switch (ussd_state) {
@@ -204,8 +203,6 @@ int ipc2ril_ussd_state(struct ipc_ss_ussd_header *ussd, char *message[2])
 	if (ussd == NULL || message == NULL)
 		return -1;
 
-	RIL_LOGE("ipc2ril USSD state is %d", ussd->state);
-
 	switch (ussd->state) {
 		case IPC_SS_USSD_NO_ACTION_REQUIRE:
 			asprintf(&message[0], "%d", 0);
@@ -296,7 +293,6 @@ int ipc_ss_ussd(struct ipc_message *message)
 							  + sizeof(struct ipc_ss_ussd_header), &data_dec, message->size - sizeof(struct ipc_ss_ussd_header));
 				asprintf(&ussd_message[1], "%s", data_dec);
 				ussd_message[1][data_dec_len] = '\0';
-
 				break;
 			case USSD_ENCODING_UCS2:
 				RIL_LOGD("USSD Rx encoding %x is UCS2", ussd->dcs);
