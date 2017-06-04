@@ -57,6 +57,54 @@ complete:
 	return 0;
 }
 
+/*
+ * Converts ASCII (7 bits) data to GSM7 (8 bits)
+ */
+int ril2ipc_ascii2gsm7(char *data, unsigned char **data_enc, int length)
+{
+	int d_off, d_pos, a_off, a_pos = 0;
+	int i;
+	int enc_length;
+	unsigned char *enc;
+
+	enc_length = ((length * 7) - (length * 7) % 8) / 8;
+	enc_length += (length * 7) % 8 > 0 ? 1 : 0;
+
+	// FIXME: why does Samsung do this?
+	enc_length++;
+
+	enc = malloc(enc_length);
+	memset(enc, 0, enc_length);
+
+	for (i = 0 ; i < length ; i++) {
+		// offset from the right of data to keep
+		d_off = i % 8;
+
+		// position of the data we keep
+		d_pos = ((i * 7) - (i * 7) % 8) / 8;
+		d_pos += (i * 7) % 8 > 0 ? 1 : 0;
+
+		// adding the data with correct offset
+		enc[d_pos] |= data[i] >> d_off;
+
+		// numbers of bits to omit to get data to add another place
+		a_off = 8 - d_off;
+		// position (on the encoded feed) of the data to add
+		a_pos = d_pos - 1;
+
+		// adding the data to add at the correct position
+		enc[a_pos] |= data[i] << a_off;
+	}
+
+	*data_enc = enc;
+
+	// FIXME: what is going on here?
+	enc[enc_length - 2] |= 0x30;
+	enc[enc_length - 1] = 0x02;
+
+	return enc_length;
+}
+
 int ril_request_send_ussd(void *data, size_t size, RIL_Token token)
 {
 	char *data_enc = NULL;
@@ -99,7 +147,7 @@ int ril_request_send_ussd(void *data, size_t size, RIL_Token token)
 		case IPC_SS_USSD_TIME_OUT:
 			RIL_LOGD("USSD Tx encoding is GSM7");
 
-			data_enc_len = ascii2gsm7_ussd(data, (unsigned char**)&data_enc, (int) size);
+			data_enc_len = ril2ipc_ascii2gsm7(data, (unsigned char**)&data_enc, (int) size);
 			if (data_enc_len > message_size) {
 				RIL_LOGE("USSD message size is too long, aborting");
 				goto error;
@@ -260,6 +308,43 @@ int ipc2ril_ussd_encoding(int data_encoding)
 	return USSD_ENCODING_UNKNOWN;
 }
 
+/* writes the utf8 character encoded in v
+ * to the buffer utf8 at the specified offset
+ */
+int ipc2ril_utf8_write(char *utf8, int offset, int v)
+{
+	int result;
+
+	if (v < 0x80) {
+		result = 1;
+		if (utf8)
+			utf8[offset] = (char)v;
+	} else if (v < 0x800) {
+		result = 2;
+		if (utf8) {
+			utf8[offset + 0] = (char)(0xc0 | (v >> 6));
+			utf8[offset + 1] = (char)(0x80 | (v & 0x3f));
+		}
+	} else if (v < 0x10000) {
+		result = 3;
+		if (utf8) {
+			utf8[offset + 0] = (char)(0xe0 | (v >> 12));
+			utf8[offset + 1] = (char)(0x80 | ((v >> 6) & 0x3f));
+			utf8[offset + 2] = (char)(0x80 | (v & 0x3f));
+		}
+	} else {
+		result = 4;
+		if (utf8) {
+			utf8[offset + 0] = (char)(0xf0 | ((v >> 18) & 0x7));
+			utf8[offset + 1] = (char)(0x80 | ((v >> 12) & 0x3f));
+			utf8[offset + 2] = (char)(0x80 | ((v >> 6) & 0x3f));
+			utf8[offset + 3] = (char)(0x80 | (v & 0x3f));
+		}
+	}
+
+	return result;
+}
+
 #define  GSM_7BITS_ESCAPE   0x1b
 
 /* For each gsm7 code value, this table gives the equivalent
@@ -314,7 +399,7 @@ int ipc2ril_utf8_from_gsm7(unsigned char *data, char **utf8, int length)
 		} else {
 			v = gsm7bits_to_unicode[c];
 		}
-		result += utf8_write(*utf8, result, v);
+		result += ipc2ril_utf8_write(*utf8, result, v);
 
 	NextSeptet:
 		shift += 7;
@@ -377,7 +462,7 @@ int ipc_ss_ussd(struct ipc_message *message)
 				char *ucs2 = (char*)message->data + sizeof(struct ipc_ss_ussd_header);
 				for (i = 0; i < data_dec_len; i += 2) {
 					int c = (ucs2[i] << 8) | ucs2[1 + i];
-					result += utf8_write(ussd_message[1], result, c);
+					result += ipc2ril_utf8_write(ussd_message[1], result, c);
 				}
 				ussd_message[1][result] = '\0';
 				break;
